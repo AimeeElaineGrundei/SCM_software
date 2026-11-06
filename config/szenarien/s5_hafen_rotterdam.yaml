@@ -1,0 +1,4 @@
+name: S5 Hafen Rotterdam gesperrt
+beschreibung: Rotterdam nicht nutzbar → Hamburg
+stoerungen:
+  - {typ: knoten, ziel: RTM, dauer_tage: 30}

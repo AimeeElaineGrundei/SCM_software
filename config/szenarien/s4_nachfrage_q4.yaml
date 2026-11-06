@@ -1,0 +1,4 @@
+name: S4 Nachfrage +30 %
+beschreibung: Höhere Nachfrage (Weihnachtsgeschäft)
+nachfrage_faktor: 1.3
+stoerungen: []

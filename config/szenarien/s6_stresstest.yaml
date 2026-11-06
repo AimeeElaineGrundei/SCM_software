@@ -1,0 +1,6 @@
+name: S6 Stresstest
+beschreibung: Suez gesperrt + Seiko-Ausfall, mit Zweitlieferant
+reaktion: {zweitlieferant: true}
+stoerungen:
+  - {typ: engpass, ziel: suez, dauer_tage: 300}
+  - {typ: lieferant, ziel: U_SEIKO, dauer_tage: 56}

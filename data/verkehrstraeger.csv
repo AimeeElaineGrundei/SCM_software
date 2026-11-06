@@ -1,0 +1,7 @@
+modus,eur_pro_tkm,eur_pro_kg_umschlag,co2e_g_pro_tkm,puenktlichkeit,bemerkung,quelle
+see,0.012,0.1,13,0.55,"Containerschiff, LCL; Pünktlichkeit 50–65 % (Sea-Intelligence 2026)",Annahme – Richtwerte orientiert an UBA (TREMOD) / GLEC; im Original prüfen
+bahn,0.1,0.05,18,0.85,"Güterzug EU, elektrisch",Annahme – Richtwerte orientiert an UBA (TREMOD) / GLEC; im Original prüfen
+bahn_cn,0.08,0.1,28,0.75,"Seidenstraße CN–DE, teils Diesel",Annahme – Richtwerte orientiert an UBA (TREMOD) / GLEC; im Original prüfen
+lkw,0.2,0.05,110,0.95,Stückgut/Teilladung,Annahme – Richtwerte orientiert an UBA (TREMOD) / GLEC; im Original prüfen
+binnen,0.05,0.05,32,0.9,Containerbinnenschiff Rhein/Neckar,Annahme – Richtwerte orientiert an UBA (TREMOD) / GLEC; im Original prüfen
+luft,0.35,0.4,800,0.9,Luftfracht Langstrecke,Annahme – Richtwerte orientiert an UBA (TREMOD) / GLEC; im Original prüfen

@@ -2,13 +2,14 @@
 
 Kennzeichen: KI (Claude-Erstentwurf) – nach eigener Überarbeitung E setzen
 """
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from scm_lite.daten import lade_stammdaten, lade_szenario, szenario_liste
 from scm_lite.karte import karte
 from scm_lite.netz import Netz
-from scm_lite.rechnung import berechne, vergleiche_alle
+from scm_lite.rechnung import KENNZAHLEN, MODUS_NAME, berechne, vergleiche_alle
 
 st.set_page_config(page_title="SCM Uhren-Lieferkette", page_icon="⌚", layout="wide")
 
@@ -76,7 +77,7 @@ for c, (k, v) in zip(cols, kpi.items()):
 if kpi["Lieferfähigkeit [%]"] < cfg["beta_min"] * 100:
     st.error(f"Lieferfähigkeit unter Ziel ({cfg['beta_min']:.0%}) – Sicherheitsbestand oder Zweitlieferant prüfen.")
 
-tab1, tab2, tab3 = st.tabs(["🗺️ Karte & Lieferwege", "📊 Szenariovergleich", "📋 Daten"])
+tab1, tab2, tab3 = st.tabs(["🗺️ Karte & Lieferwege", "📊 Szenariovergleich", "📋 Stammdaten"])
 
 with tab1:
     st.plotly_chart(karte(teile, netz, S), width="stretch")
@@ -88,14 +89,87 @@ with tab1:
     st.dataframe(zeige.round(2), hide_index=True, width="stretch")
 
 with tab2:
+    st.subheader("Alle Szenarien auf einen Blick")
+    st.caption("Farbe = Vergleich mit S0 Basis: 🟩 besser · 🟥 schlechter · weiß = gleich. "
+               "Gerechnet mit den Standardwerten aus base.yaml (ohne die Eingriffe links).")
     vgl = vergleiche_alle(S)
-    kz = st.selectbox("Kennzahl", [c for c in vgl.columns if c != "Szenario"])
-    st.plotly_chart(px.bar(vgl, x="Szenario", y=kz, text_auto=".1f"), width="stretch")
-    st.dataframe(vgl.round(2), hide_index=True, width="stretch")
-    st.caption("Vergleich aller Szenario-Dateien mit den Standardwerten aus base.yaml.")
+    basis = vgl[vgl.key == "s0_basis"].iloc[0]
+
+    def faerben(spalte):
+        if spalte.name not in KENNZAHLEN:
+            return [""] * len(spalte)
+        besser_hoch = KENNZAHLEN[spalte.name] == "max"
+        farben = []
+        for v in spalte:
+            diff = v - basis[spalte.name]
+            if abs(diff) < 1e-6:
+                farben.append("")
+            elif (diff > 0) == besser_hoch:
+                farben.append("background-color: #d9f2d9")
+            else:
+                farben.append("background-color: #f8d7da")
+        return farben
+
+    formate = {"Kosten [€/Uhr]": "{:,.2f}", "Lieferzeit [Tage]": "{:,.1f}", "Kapitalbindung [€]": "{:,.0f}",
+               "CO₂e [kg/Uhr]": "{:,.3f}", "Lieferfähigkeit [%]": "{:,.1f}", "Auslastung Montage [%]": "{:,.1f}"}
+    tabelle = vgl.drop(columns="key").set_index("Szenario")
+    st.dataframe(tabelle.style.apply(faerben).format(formate), width="stretch",
+                 column_config={"Was passiert": st.column_config.TextColumn(width="large")})
+
+    st.subheader("Eine Kennzahl im Detail")
+    kz = st.radio("Kennzahl", list(KENNZAHLEN), horizontal=True, label_visibility="collapsed")
+    d = vgl[["Szenario", kz]].copy()
+    diff = d[kz] - basis[kz]
+    besser = diff > 0 if KENNZAHLEN[kz] == "max" else diff < 0
+    d["Bewertung"] = ["gleich wie Basis" if abs(x) < 1e-6 else "besser" if b else "schlechter"
+                      for x, b in zip(diff, besser)]
+    d = d.sort_values(kz, ascending=KENNZAHLEN[kz] == "max")
+    fig = px.bar(d, x=kz, y="Szenario", orientation="h", color="Bewertung", text_auto=".1f",
+                 color_discrete_map={"besser": "#2ca02c", "schlechter": "#d62728", "gleich wie Basis": "#9e9e9e"})
+    fig.add_vline(x=basis[kz], line_dash="dash", annotation_text="Basis")
+    if kz == "Lieferfähigkeit [%]":
+        fig.add_vline(x=cfg["beta_min"] * 100, line_color="red", annotation_text="Ziel")
+    fig.update_layout(height=380, yaxis_title=None, legend_title=None)
+    st.plotly_chart(fig, width="stretch")
 
 with tab3:
-    st.subheader("Lieferanten")
-    st.dataframe(LIEF.drop(columns=["standardroute"]), hide_index=True, width="stretch")
-    st.subheader("Transportkanten")
-    st.dataframe(S["kanten"], hide_index=True, width="stretch")
+    st.caption("Stammdaten aus dem Ordner data/. Änderungen bitte in den CSV-Dateien vornehmen.")
+    d_lief, d_wege, d_orte, d_cfg = st.tabs(["Lieferanten", "Transportwege", "Standorte", "Konfiguration"])
+
+    with d_lief:
+        bt = st.selectbox("Bauteil", ["alle"] + sorted(LIEF.komponente.unique()))
+        l = LIEF if bt == "alle" else LIEF[LIEF.komponente == bt]
+        aktiv = set(cfg["lieferanten"].values())
+        st.dataframe(pd.DataFrame({
+            "aktiv": ["✅" if i in aktiv else "" for i in l.index],
+            "Bauteil": l.komponente, "Lieferant": l["name"], "Land": l.land, "Ort": l.ort,
+            "Poster": l.poster, "Preis [€]": l.preis_eur, "Vorlauf [T]": l.vorlaufzeit_tage,
+            "Gewicht [g]": l.gewicht_brutto_g, "Zoll [%]": l.zollsatz * 100,
+            "Datenstand": l.preis_status, "Bemerkung": l.bemerkung.fillna(""),
+        }), hide_index=True, width="stretch")
+        st.caption("Datenstand: Poster = vom Poster · abgeleitet = umgerechnet · Annahme = geschätzt")
+
+    with d_wege:
+        K, KN = S["kanten"], S["knoten"]
+        c1, c2 = st.columns(2)
+        modi = c1.multiselect("Verkehrsträger", sorted(K.modus.unique()), format_func=lambda m: MODUS_NAME.get(m, m))
+        nur_haupt = c2.toggle("Nur Hauptstrecken (ohne Vorlauf Lieferant → Hafen)", value=True)
+        k = K[K.modus.isin(modi)] if modi else K
+        if nur_haupt:
+            k = k[~k.von.isin(LIEF.index)]
+        st.dataframe(pd.DataFrame({
+            "Von": KN.loc[k.von, "name"].values, "Nach": KN.loc[k.nach, "name"].values,
+            "Verkehrsträger": k.modus.map(lambda m: MODUS_NAME.get(m, m)).values,
+            "Route": k.route.replace("", "Standard").values, "km": k.distanz_km.values,
+            "Tage (min/typ/max)": [f"{a:g} / {b:g} / {c:g}" for a, b, c in zip(k.tage_min, k.tage_modus, k.tage_max)],
+            "€/kg": k.kosten_eur_pro_kg.values, "g CO₂e/tkm": k.co2e_g_pro_tkm.values,
+            "Engpass": k.engpaesse.replace("", "–").values,
+        }), hide_index=True, width="stretch")
+
+    with d_orte:
+        st.dataframe(S["knoten"][["name", "typ", "land", "lat", "lon"]].rename(columns={
+            "name": "Name", "typ": "Typ", "land": "Land"}), width="stretch")
+
+    with d_cfg:
+        st.write("Aktuelle Einstellungen (Szenario-Datei + Eingriffe links):")
+        st.json({k: v for k, v in cfg.items() if k not in ("key",)}, expanded=False)

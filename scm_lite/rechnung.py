@@ -17,6 +17,16 @@ import pandas as pd
 from .daten import lade_szenario, szenario_liste
 from .netz import Netz
 
+# Kennzahlen: Einheit für die Anzeige und ob niedrig oder hoch besser ist
+KENNZAHLEN = {
+    "Kosten [€/Uhr]": "min",
+    "Lieferzeit [Tage]": "min",
+    "Kapitalbindung [€]": "min",
+    "CO₂e [kg/Uhr]": "min",
+    "Lieferfähigkeit [%]": "max",
+    "Auslastung Montage [%]": "min",
+}
+
 MODUS_NAME = {"see": "See", "bahn": "Bahn", "bahn_cn": "Bahn (Seidenstraße)", "lkw": "Lkw",
               "binnen": "Binnenschiff", "luft": "Luft"}
 
@@ -117,13 +127,13 @@ def berechne(cfg: dict, stamm: dict) -> tuple[pd.DataFrame, dict]:
     return teile, kpi
 
 
-def vergleiche_alle(stamm: dict, aenderungen: dict | None = None) -> pd.DataFrame:
-    """Alle Szenario-Dateien rechnen → eine Zeile je Szenario."""
+def vergleiche_alle(stamm: dict) -> pd.DataFrame:
+    """Alle Szenario-Dateien rechnen → eine Zeile je Szenario (inkl. betroffener Bauteile)."""
     zeilen = []
     for key in szenario_liste():
         cfg = lade_szenario(key)
-        if aenderungen:
-            cfg.update(aenderungen)
-        _, kpi = berechne(cfg, stamm)
-        zeilen.append({"Szenario": cfg["name"], **kpi})
+        teile, kpi = berechne(cfg, stamm)
+        betroffen = teile[teile.status != "normal"]
+        zeilen.append({"key": key, "Szenario": cfg["name"], **kpi,
+                       "Was passiert": "; ".join(f"{r.bauteil}: {r.status}" for r in betroffen.itertuples()) or "–"})
     return pd.DataFrame(zeilen)

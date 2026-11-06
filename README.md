@@ -29,6 +29,7 @@ config/base.yaml       Standardwerte (Lieferanten, Sicherheitsbestand, Kosten �
 config/szenarien/      ein YAML je Szenario, nur Störungen/Abweichungen
 data/*.csv             Lieferanten, Knoten, Transportkanten, Verkehrsträger, Tier 2
 tests/                 Plausibilitätstests
+docs/ARCHITEKTUR.md    Diagramme: Dateifluss, Ablauf, Klassen, Datenmodell
 ```
 
 ## Rechenlogik

@@ -1,4 +1,0 @@
-name: S1 Rotes Meer gesperrt
-beschreibung: Suez gesperrt → Umleitung über das Kap
-stoerungen:
-  - {typ: engpass, ziel: suez, dauer_tage: 300}

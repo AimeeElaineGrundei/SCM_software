@@ -1,4 +1,0 @@
-name: S2 Ausfall Seiko 8 Wochen
-beschreibung: Uhrwerk-Lieferant fällt aus, kein Ersatz
-stoerungen:
-  - {typ: lieferant, ziel: U_SEIKO, dauer_tage: 56}

@@ -1,5 +1,0 @@
-name: S2b Ausfall Seiko + Zweitlieferant
-beschreibung: Wie S2, aber Miyota springt ein
-reaktion: {zweitlieferant: true}
-stoerungen:
-  - {typ: lieferant, ziel: U_SEIKO, dauer_tage: 56}

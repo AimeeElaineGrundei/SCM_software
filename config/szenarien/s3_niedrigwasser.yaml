@@ -1,4 +1,4 @@
 name: S3 Rhein-Niedrigwasser
-beschreibung: Kein Binnenschiff auf dem Rhein → Lkw/Bahn ab Rotterdam
+beschreibung: Tag 180–240 kein Binnenschiff auf dem Rhein → Lkw/Bahn ab Rotterdam
 stoerungen:
-  - {typ: engpass, ziel: rhein, dauer_tage: 60}
+  - {typ: engpass, ziel: rhein, start_tag: 180, dauer_tage: 60}

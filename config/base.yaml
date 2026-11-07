@@ -1,10 +1,10 @@
-# Basiskonfiguration (einfache, deterministische Version)
-# Szenarien in config/szenarien/ enthalten nur Störungen und Abweichungen.
+# Standardwerte für alle Szenarien. Szenario-Dateien in config/szenarien/ enthalten nur Störungen.
+# Einheiten: Tage, €, kg CO2e.  (A) = Annahme
 
-uhren_pro_jahr: 10000          # Nachfrage
-uhrwerk_typ: mechanisch
+tage: 365                      # Simulationszeitraum, Tagesschritte
+uhren_pro_jahr: 10000          # Nachfrage (Poster Merle/Leon)
 
-# Aktiver Lieferant je Bauteil (Netz Alex)
+# Aktiver Lieferant je Bauteil (Netz Alex) und Ersatz bei Ausfall
 lieferanten:
   uhrwerk: U_SEIKO
   gehaeuse: G_SZX_A
@@ -12,28 +12,26 @@ lieferanten:
   zifferblatt: Z_LA_A
   armband: A_SAO_A
   zeiger: ZG_BES_A
-
-# Ersatz, falls der Lieferant ausfällt und reaktion.zweitlieferant = true
 zweitlieferanten:
-  uhrwerk: U_MIYOTA_M
+  uhrwerk: U_MIYOTA_M          # Alex: Zweitlieferant Miyota
   gehaeuse: G_CN_M
   saphirglas: S_NJ_M
   zifferblatt: Z_BR_M
   armband: A_FLR_M
   zeiger: ZG_CLU_E
 
-routing_kriterium: zeit        # Umleitung nach zeit | kosten | co2e
-luftfracht_erlaubt: false
-
+# Reaktionen (in der Oberfläche umschaltbar)
+zweitlieferant: false
 sicherheitstage: 14            # Sicherheitsbestand in Tagen Bedarf
-bestellrhythmus_tage: 30       # Bestellmenge = 30 Tage Bedarf
+tier2_puffer_tage: 14          # so lange überbrückt ein Tier-1 einen Tier-2-Ausfall (A)
+bestellrhythmus_tage: 30       # Bestellmenge = 30 Tage Bedarf (A)
 
+montage_kapazitaet_pro_tag: 60 # (A)
 montage_kosten_pro_uhr: 8.50   # 0,5 h × 17 €/h (Merle)
-montage_kapazitaet_pro_tag: 60
-versand_pro_paket: 6.19        # Alex
-co2e_kg_pro_paket: 0.25        # Annahme
+versand_pro_paket: 6.19        # Paketdienst (Alex)
+co2e_kg_pro_paket: 0.25        # (A)
 kapitalzins_pa: 0.12           # 8 % Kapital + 4 % Lager (Merle)
-beta_min: 0.95                 # Mindest-Lieferfähigkeit
+beta_min: 0.95                 # Ziel Lieferfähigkeit (Alex)
 
-reaktion:
-  zweitlieferant: false
+preis_faktor: 1.0              # nur für die Sensitivitätsanalyse
+transport_faktor: 1.0          # nur für die Sensitivitätsanalyse

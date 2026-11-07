@@ -1,4 +1,4 @@
 name: S5 Hafen Rotterdam gesperrt
-beschreibung: Rotterdam nicht nutzbar → Hamburg
+beschreibung: Tag 120–150 Rotterdam nicht nutzbar → Hamburg (3 von 6 Teilen laufen über Rotterdam)
 stoerungen:
-  - {typ: knoten, ziel: RTM, dauer_tage: 30}
+  - {typ: knoten, ziel: RTM, start_tag: 120, dauer_tage: 30}

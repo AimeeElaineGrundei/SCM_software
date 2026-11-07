@@ -1,129 +1,150 @@
-# Architektur der einfachen Version
+# Architektur
 
-Die Diagramme sind in Mermaid geschrieben. GitHub/GitLab zeigen sie direkt an. In VS Code
-braucht die Markdown-Vorschau die Erweiterung *Markdown Preview Mermaid Support*.
+Die Diagramme sind in Mermaid geschrieben. GitHub zeigt sie direkt an. In VS Code braucht die
+Vorschau (Strg+Shift+V) die Erweiterung *Markdown Preview Mermaid Support*.
 
-## 1. Welche Datei greift auf was zu
+## 1. Schichten und Datenfluss
 
 ```mermaid
 flowchart LR
-    subgraph Eingaben
-        BASE["config/base.yaml<br/>Standardwerte"]
-        SZ["config/szenarien/*.yaml<br/>Störungen je Szenario"]
-        CSV["data/*.csv<br/>Lieferanten · Knoten · Kanten"]
+    subgraph Eingaben["Eingaben (ändern ohne Code)"]
+        BASE["config/base.yaml"]
+        SZ["config/szenarien/*.yaml"]
+        CSV["data/*.csv"]
     end
-
-    subgraph scm_lite["Paket scm_lite"]
-        DATEN["daten.py<br/>laden + zusammenführen"]
-        NETZ["netz.py<br/>Klasse Netz<br/>Sperren · Dijkstra"]
-        RECH["rechnung.py<br/>Kennzahlen je Bauteil/Uhr"]
-        KARTE["karte.py<br/>Plotly-Weltkarte"]
+    subgraph Modell["Modell (scm_lite)"]
+        DATEN["daten.py<br/>laden"]
+        NETZ["netz.py<br/>Klasse Netz"]
+        SIM["simulation.py<br/>Tagesschleife"]
+        AUSW["auswertung.py<br/>Kennzahlen · Vergleich · Pareto · Sensitivität"]
     end
-
-    APP["app.py<br/>Streamlit-Oberfläche"]
-    TEST["tests/test_rechnung.py"]
-
-    CSV --> DATEN
-    BASE --> DATEN
-    SZ --> DATEN
-    DATEN -->|"stamm (dict), cfg (dict)"| APP
-    APP -->|"cfg + Eingriffe"| RECH
-    RECH -->|nutzt| NETZ
-    RECH -->|"teile (DataFrame), kpi (dict)"| APP
-    APP -->|"teile, netz"| KARTE
-    KARTE -->|Figure| APP
-    NETZ -->|"Kanten, Routen"| KARTE
-    TEST --> DATEN & NETZ & RECH
+    subgraph Sichten["Sichten"]
+        APP["app.py<br/>Kennzahlen + Diagramme"]
+        KARTE["karte.py<br/>animierte Karte"]
+    end
+    BASE & SZ & CSV --> DATEN
+    DATEN -->|"stamm, cfg"| AUSW
+    AUSW -->|"rechne(cfg)"| SIM
+    SIM -->|"route(lieferant)"| NETZ
+    SIM -->|"tage, sendungen"| AUSW
+    AUSW -->|"kpi, teile, tage, sendungen"| APP
+    APP --> KARTE
+    KARTE --> NETZ
 ```
 
-## 2. Was passiert bei einem Klick in der Oberfläche
+Alle drei Sichten lesen dasselbe Ergebnis von `auswertung.rechne()`. Deshalb passen Karte,
+Diagramme und Kennzahlen immer zueinander.
+
+## 2. Tagesschleife (`simulation.simuliere`)
+
+```mermaid
+flowchart TD
+    A([Tag t]) --> B[Störungen des Tages setzen]
+    B --> C[Eingetroffene Sendungen ins Lager]
+    C --> D[Montage = min Kapazität, Nachfrage+Rückstand, Lager aller 6 Teile]
+    D --> E[Kunden beliefern: sofort oder Rückstand]
+    E --> F{je Bauteil: Lager + Unterwegs ≤ Bestellpunkt?}
+    F -- nein --> H
+    F -- ja --> G{Lieferant aktiv?}
+    G -- ja --> R[Route: Posterroute oder Umleitung]
+    G -- nein --> Z{Zweitlieferant an?}
+    Z -- ja --> R
+    Z -- nein --> H
+    R --> S[Sendung anlegen: Kosten, CO₂e, Etappen]
+    S --> H[Tageswerte speichern]
+    H --> I([t + 1])
+```
+
+## 3. Ablauf bei einem Klick
 
 ```mermaid
 sequenceDiagram
     actor N as Nutzer
     participant A as app.py
     participant D as daten.py
-    participant R as rechnung.py
-    participant Z as netz.py (Netz)
+    participant W as auswertung.py
+    participant S as simulation.py
+    participant Z as netz.py
     participant K as karte.py
-
-    N->>A: Szenario wählen / Störung auslösen
-    A->>D: lade_szenario(key)
-    D-->>A: cfg = base.yaml + Szenario
-    A->>A: Eingriffe aus der Seitenleiste an cfg["stoerungen"] anhängen
-    A->>R: berechne(cfg, stamm)
-    R->>Z: Netz(stamm) + sperren(stoerungen)
-    loop je Bauteil
-        R->>R: Lieferant aktiv? sonst Zweitlieferant
-        R->>Z: route(lieferant)
-        Z-->>R: Standardroute oder Umleitung (Dijkstra)
-        R->>R: Kosten, Tage, CO₂e, Kapital, Fehltage
+    N->>A: Ereignis + Reaktion wählen
+    A->>D: lade_szenario("s0_basis") + Störungen der Ereignisse
+    A->>W: rechne(cfg, stamm)
+    W->>S: simuliere(cfg, stamm)
+    loop 365 Tage × 6 Bauteile
+        S->>Z: route(lieferant)
+        Z-->>S: Kanten-IDs
     end
-    R-->>A: teile, kpi
-    A->>K: karte(teile, netz, stamm)
-    K-->>A: Plotly-Figure
-    A-->>N: Kennzahlen, Karte, Tabellen
+    S-->>W: tage, sendungen
+    W-->>A: kpi, teile, tage, sendungen
+    A->>K: karte(ergebnis)
+    A-->>N: Ampeln, Text, Karte, Diagramme
 ```
 
-## 3. Klassen und Funktionen
+## 4. Klassen und Funktionen
 
 ```mermaid
 classDiagram
     class daten {
-        <<Modul>>
+        <<Modul · Leon>>
         +lade_stammdaten() dict
         +szenario_liste() list
         +lade_szenario(key) dict
     }
     class Netz {
-        +stamm: dict
+        <<Klasse · Leon>>
         +kanten: dict
-        +gesperrt_tags: set
-        +gesperrt_knoten: set
-        +sperren(stoerungen)
+        +gesperrt: frozenset
+        +setze_sperren(stoerungen)
         +offen(kante_id) bool
         +standardroute(lieferant_id) list
-        +beste_route(start, kriterium, luft) list
-        +route(lieferant_id, kriterium, luft) list
+        +route(lieferant_id) list
+        -_umleitung(start) list
     }
-    class rechnung {
-        <<Modul>>
+    class simulation {
+        <<Modul · Alex>>
+        +simuliere(cfg, stamm) dict
+        +aktiv(stoerungen, t) list
+        +faellt_aus(lid, t, cfg, tier2) bool
+        -_sendung(...) dict
+    }
+    class auswertung {
+        <<Modul · Elaine>>
         +KENNZAHLEN: dict
-        +berechne(cfg, stamm) tuple
-        +vergleiche_alle(stamm) DataFrame
-        +routentext(netz, lid, route) str
-        -_teil(...) dict
+        +rechne(cfg, stamm) dict
+        +vergleich(stamm) DataFrame
+        +massnahmen(cfg, stamm) DataFrame
+        +ist_pareto(df, spalten) list
+        +sensitivitaet(cfg, stamm) DataFrame
     }
     class karte {
-        <<Modul>>
-        +karte(teile, netz, stamm) Figure
+        <<Modul · Merle>>
+        +karte(ergebnis, cfg, stamm) Figure
         +linie(stamm, kante) tuple
-        -_wegpunkte(...) list
     }
     class app {
-        <<Streamlit>>
-        Seitenleiste
-        Tab Karte
-        Tab Szenariovergleich
-        Tab Stammdaten
+        <<Streamlit · Merle>>
+        Ereignisse
+        Reaktion
+        Kennzahlen
+        Karte und Diagramme
+        Auswertung
     }
-    app ..> daten : lädt
-    app ..> rechnung : rechnet
-    app ..> karte : zeichnet
-    rechnung ..> Netz : erzeugt
-    rechnung ..> daten : Szenarien
-    karte ..> Netz : liest Kanten
+    app ..> daten
+    app ..> auswertung
+    app ..> karte
+    auswertung ..> simulation
+    auswertung ..> daten
+    simulation ..> Netz
+    karte ..> Netz
 ```
 
-## 4. Datenmodell (CSV-Dateien)
+## 5. Datenmodell
 
 ```mermaid
 erDiagram
-    LIEFERANTEN ||--o{ KANTEN : "Startknoten (lieferant_id = von)"
+    LIEFERANTEN ||--o{ KANTEN : "Start der Route"
     KNOTEN ||--o{ KANTEN : "von / nach"
-    LIEFERANTEN ||--o{ TIER2 : "liefert_an"
-    VERKEHRSTRAEGER ||--o{ KANTEN : modus
-
+    TIER2 }o--|| LIEFERANTEN : "liefert_an"
     LIEFERANTEN {
         string lieferant_id PK
         string komponente
@@ -133,9 +154,13 @@ erDiagram
         float zollsatz
         string standardroute
     }
+    TIER2 {
+        string tier2_id PK
+        string liefert_an FK
+        float transport_tage
+    }
     KNOTEN {
         string knoten_id PK
-        string name
         string typ
         float lat
         float lon
@@ -151,22 +176,15 @@ erDiagram
         float co2e_g_pro_tkm
         string engpaesse
     }
-    TIER2 {
-        string tier2_id PK
-        string liefert_an FK
-    }
-    VERKEHRSTRAEGER {
-        string modus PK
-        float co2e_g_pro_tkm
-    }
 ```
 
-## 5. Wichtige Datenstrukturen zwischen den Dateien
+## 6. Schnittstellen zwischen den Modulen
 
-| Name | Typ | Erzeugt in | Inhalt |
+| Objekt | Typ | erzeugt von | Inhalt |
 |---|---|---|---|
-| `stamm` | dict aus DataFrames | `daten.lade_stammdaten` | `lieferanten`, `knoten`, `kanten` |
-| `cfg` | dict | `daten.lade_szenario` | base.yaml + Szenario, z. B. `lieferanten`, `stoerungen`, `sicherheitstage` |
-| `stoerungen` | Liste von dicts | YAML / Seitenleiste | `{typ, ziel, dauer_tage}` |
-| `teile` | DataFrame | `rechnung.berechne` | eine Zeile je Bauteil: Lieferant, Route, Kosten, Tage, CO₂e, Fehltage |
-| `kpi` | dict | `rechnung.berechne` | 6 Kennzahlen je Uhr |
+| `stamm` | dict aus DataFrames | `daten.lade_stammdaten()` | `lieferanten`, `tier2`, `knoten`, `kanten` |
+| `cfg` | dict | `daten.lade_szenario()` | Inhalt von base.yaml + `stoerungen` (Liste von `{typ, ziel, start_tag, dauer_tage}`) |
+| `tage` | DataFrame | `simulation.simuliere()` | je Tag: `nachfrage, montage, sofort, rueckstand, lager_<teil>, unterwegs_<teil>` |
+| `sendungen` | DataFrame | `simulation.simuliere()` | je Bestellung: `bauteil, lieferant, bestellt, ankunft, menge, kosten_stk, co2_g_stk, umgeleitet, etappen` |
+| `kpi` | dict | `auswertung.rechne()` | 5 Kennzahlen (Schlüssel wie in `KENNZAHLEN`) |
+| `teile` | DataFrame | `auswertung.rechne()` | je Bauteil: `lieferant, bestellungen, kosten_stk, lieferzeit, co2_g_stk, status` |

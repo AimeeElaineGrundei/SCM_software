@@ -1,4 +1,4 @@
-name: S4 Nachfrage +30 %
-beschreibung: Höhere Nachfrage (Weihnachtsgeschäft)
-nachfrage_faktor: 1.3
-stoerungen: []
+name: S4 Nachfrage +30 % im 4. Quartal
+beschreibung: Weihnachtsgeschäft ab Tag 273
+stoerungen:
+  - {typ: nachfrage, faktor: 1.3, start_tag: 273, dauer_tage: 92}

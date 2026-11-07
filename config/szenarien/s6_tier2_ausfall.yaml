@@ -1,0 +1,4 @@
+name: S6 Tier-2 Spiralfeder fällt aus
+beschreibung: Vorlieferant Spiralfeder (Genf) fällt 45 Tage aus → Seiko kann nach dem Puffer nicht liefern
+stoerungen:
+  - {typ: tier2, ziel: T2_SPIRAL_GE, start_tag: 100, dauer_tage: 45}

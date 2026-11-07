@@ -1,4 +1,4 @@
 name: S1 Rotes Meer gesperrt
-beschreibung: Suez gesperrt → Umleitung über das Kap
+beschreibung: Suez ab Tag 60 gesperrt → Umleitung über das Kap (häufigste reale Störung 2024–26)
 stoerungen:
-  - {typ: engpass, ziel: suez, dauer_tage: 300}
+  - {typ: engpass, ziel: suez, start_tag: 60, dauer_tage: 305}

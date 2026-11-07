@@ -1,4 +1,4 @@
 name: S2 Ausfall Seiko 8 Wochen
-beschreibung: Uhrwerk-Lieferant fällt aus, kein Ersatz
+beschreibung: Uhrwerk (Single Point of Failure) fällt ab Tag 100 aus, kein Ersatz
 stoerungen:
-  - {typ: lieferant, ziel: U_SEIKO, dauer_tage: 56}
+  - {typ: lieferant, ziel: U_SEIKO, start_tag: 100, dauer_tage: 56}

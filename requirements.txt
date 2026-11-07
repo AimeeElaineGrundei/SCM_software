@@ -1,0 +1,9 @@
+simpy>=4.1
+networkx>=3.2
+pandas>=2.2
+numpy>=1.26
+scipy>=1.11
+pyyaml>=6.0
+dash>=2.17
+plotly>=5.22
+pytest>=8.0

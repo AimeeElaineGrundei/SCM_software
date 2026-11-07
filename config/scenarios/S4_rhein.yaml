@@ -1,0 +1,5 @@
+name: S4 Rhein-Niedrigwasser
+description: Binnenschifffahrt ab Tag 200 für 60 Tage nicht möglich; Umleitung auf Bahn/Lkw.
+params: {}
+events:
+  - {type: block_mode, mode: binnenschiff, start: 200, end: 260}

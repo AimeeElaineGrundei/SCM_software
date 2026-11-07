@@ -1,0 +1,4 @@
+name: S0 Basis
+description: Normalbetrieb, Regelrouten, stochastische Transportzeiten und Nachfrage.
+params: {}
+events: []

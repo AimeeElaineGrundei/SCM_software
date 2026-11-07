@@ -1,0 +1,141 @@
+# Basisszenario S0 – Liefernetzwerk Premium-Armbanduhr, Montage Heilbronn
+# Einheiten (überall einheitlich): Zeit = Tage, Geld = EUR, Masse = kg, Strecke = km,
+#                                 Emissionsfaktor = g CO2e je Tonnenkilometer (g/tkm)
+# ACHTUNG: Alle Werte mit "# A:" sind PLATZHALTER-ANNAHMEN und müssen mit den
+# abgestimmten Gruppenwerten (Poster, Quellen) ersetzt werden. Siehe ANNAHMEN.md.
+meta:
+  name: Premium-Uhr Heilbronn
+  version: "1.0"
+
+params:
+  annual_demand: 12000          # Uhren/Jahr (A: Poster Elaine)
+  horizon_days: 365             # Auswertungszeitraum, tägliche Schritte
+  warmup_days: 60               # Einschwingphase, wird nicht ausgewertet
+  stochastic: true              # false = deterministisch (Modalwerte, feste Nachfrage)
+  seed: 42
+  safety_stock_days: 10         # A: Sicherheitsbestand in Tagen Nachfrage; so gewählt, dass S0 beta >= 97 % sicher erreicht
+  order_q_factor: 1.0           # Faktor auf die Bestellmengen Q
+  fg_target_days: 10            # Zielbestand Fertigwarenlager in Tagen Nachfrage (A)
+  air_policy: "off"             # off | on_disruption | always
+  route_weight: time            # time | cost | co2 (Umleitungs-Kriterium, Dijkstra)
+  holding_cost_rate: 0.22       # Lagerhaltungskostensatz p.a. (A: Vorlesung/Poster)
+  service_level_target: 0.97    # beta-Mindestservicegrad
+  watch_pack_kg: 0.5            # Versandgewicht je Uhr inkl. Verpackung (A)
+  assembly:
+    workers: 8                  # Kapazität 64 Uhren/Arbeitstag > Bedarf ca. 48 (A)
+    shift_h: 8
+    time_h_per_watch: 1.0       # Montage mechanisches Uhrwerk (A; Quarz laut Poster Leon 0,25 h)
+    wage_eur_h: 45              # Q: Destatis 2025, Ø Arbeitskosten Deutschland ca. 45 €/h (IHK Heilbronn-Franken)
+    workdays_per_week: 5
+  co2_g_per_tkm:                # Q: Lkw/Bahn/Binnenschiff UBA TREMOD 6.71B (2024); Luft GLEC v3.2 (long-haul);
+    see: 7.2                    #    See abgeleitet aus GLEC v3.2: 71,7 g/TEU-km bei Annahme 10 t/TEU
+    bahn: 14
+    lkw: 118
+    binnenschiff: 32
+    luft: 788
+
+nodes:
+  - {id: sup_uhrwerk,     name: "Uhrwerk-Hersteller (Biel)",          lat: 47.14, lon: 7.25,    kind: supplier}
+  - {id: t2_helios,       name: "Tier-2 Helios (Le Locle)",          lat: 47.06, lon: 6.75,    kind: supplier}
+  - {id: t2_gurofa,       name: "Tier-2 Gurofa (Grenchen)",          lat: 47.19, lon: 7.40,    kind: supplier}
+  - {id: sup_zifferblatt, name: "Zifferblatt+Zeiger (Besançon)",     lat: 47.24, lon: 6.02,    kind: supplier}
+  - {id: sup_gehaeuse,    name: "Gehäuse (Shenzhen)",                lat: 22.54, lon: 114.06,  kind: supplier}
+  - {id: sup_saphir,      name: "Saphirglas (Boston)",               lat: 42.36, lon: -71.06,  kind: supplier}
+  - {id: sup_perlmutt,    name: "Perlmutt-Platte (Sydney)",          lat: -33.87, lon: 151.21, kind: supplier}
+  - {id: sup_armband,     name: "Lederarmband (Durban)",             lat: -29.86, lon: 31.02,  kind: supplier}
+  - {id: t2_leatherite,   name: "Tier-2 Leatherite (Pietermaritzburg)", lat: -29.60, lon: 30.38, kind: supplier}
+  - {id: t2_gerberei,     name: "Tier-2 Gerberei (Gqeberha)",       lat: -33.96, lon: 25.60,  kind: supplier}
+  - {id: p_yantian,       name: "Hafen Yantian",                     lat: 22.57, lon: 114.28,  kind: port}
+  - {id: p_newyork,       name: "Hafen New York",                    lat: 40.67, lon: -74.04,  kind: port}
+  - {id: p_botany,        name: "Hafen Botany (Sydney)",             lat: -33.97, lon: 151.21, kind: port}
+  - {id: p_durban,        name: "Hafen Durban",                      lat: -29.87, lon: 31.05,  kind: port}
+  - {id: n_suez,          name: "Suezkanal",                         lat: 30.00, lon: 32.55,   kind: waypoint}
+  - {id: n_kap,           name: "Kap der Guten Hoffnung",            lat: -34.36, lon: 18.47,  kind: waypoint}
+  - {id: p_rotterdam,     name: "Hafen Rotterdam",                   lat: 51.95, lon: 4.14,    kind: port}
+  - {id: p_hamburg,       name: "Hafen Hamburg",                     lat: 53.54, lon: 9.98,    kind: port}
+  - {id: a_fra,           name: "Flughafen Frankfurt",               lat: 50.04, lon: 8.56,    kind: airport}
+  - {id: n_heilbronn,     name: "Heilbronn (Montage + Fertigwarenlager)", lat: 49.14, lon: 9.22, kind: focal}
+  - {id: c_de,   name: "Kunden Deutschland",   lat: 52.52, lon: 13.40, kind: customer, share: 0.40}
+  - {id: c_fr,   name: "Kunden Frankreich",    lat: 48.86, lon: 2.35,  kind: customer, share: 0.18}
+  - {id: c_it,   name: "Kunden Italien",       lat: 45.46, lon: 9.19,  kind: customer, share: 0.17}
+  - {id: c_es,   name: "Kunden Spanien",       lat: 40.42, lon: -3.70, kind: customer, share: 0.10}
+  - {id: c_nord, name: "Kunden Nordeuropa",    lat: 59.33, lon: 18.07, kind: customer, share: 0.15}
+
+# via = nur Darstellung (Zwischenpunkte der Kartenlinie, Lat/Lon); fixed_eur = Fixkosten je Sendung, eur_per_kg = Frachtkosten je kg; days = [min, Modus, max]
+# (alle Frachtkosten A: Platzhalter, Größenordnung nach Poster-Recherche)
+edges:
+  # Tier-2 -> Tier-1 (Vorläufe)
+  - {id: e_helios_uw,  from: t2_helios,    to: sup_uhrwerk, mode: lkw, km: 40,   days: [1,1,2],   fixed_eur: 40,  eur_per_kg: 0.05}
+  - {id: e_gurofa_uw,  from: t2_gurofa,    to: sup_uhrwerk, mode: lkw, km: 15,   days: [1,1,1],   fixed_eur: 40,  eur_per_kg: 0.05}
+  - {id: e_leather_arm,from: t2_leatherite,to: sup_armband, mode: lkw, km: 80,   days: [1,2,3],   fixed_eur: 60,  eur_per_kg: 0.05}
+  - {id: e_gerb_arm,   from: t2_gerberei,  to: sup_armband, mode: lkw, km: 1000, days: [3,4,6],   fixed_eur: 150, eur_per_kg: 0.05}
+  # Europa-Lieferanten
+  - {id: e_uw_hn,      from: sup_uhrwerk,  to: n_heilbronn, mode: lkw, km: 300, days: [1,1,2],   fixed_eur: 120, eur_per_kg: 0.08}
+  - {id: e_zb_hn,      from: sup_zifferblatt, to: n_heilbronn, mode: lkw, km: 450, days: [1,2,3], fixed_eur: 150, eur_per_kg: 0.08}
+  # Gehäuse China
+  - {id: e_geh_yan,    from: sup_gehaeuse, to: p_yantian,   mode: lkw, km: 40,   days: [1,1,2],   fixed_eur: 120, eur_per_kg: 0.05}
+  - {id: e_yan_suez,   from: p_yantian,    to: n_suez,      mode: see, km: 9500, days: [13, 15, 22], fixed_eur: 110, eur_per_kg: 0.05, via: [[10, 108], [1.3, 103.8], [6.5, 80], [12.6, 45.0], [20, 38.5], [27.8, 34.2]]}
+  - {id: e_yan_kap,    from: p_yantian,    to: n_kap,       mode: see, km: 12000,days: [20, 22, 29], fixed_eur: 110, eur_per_kg: 0.05, via: [[10, 108], [1.3, 103.8], [-5, 90], [-20, 60], [-33, 30]]}
+  - {id: e_suez_ham,   from: n_suez,       to: p_hamburg,   mode: see, km: 7200, days: [9, 11, 18],  fixed_eur: 358, eur_per_kg: 0.05, via: [[33, 30], [36, 15], [37.5, 10], [36.3, -5.6], [40, -10], [44, -9], [48.5, -5.5], [50.2, -1], [51.1, 1.6], [53, 4], [54, 7]]}
+  - {id: e_suez_rot,   from: n_suez,       to: p_rotterdam, mode: see, km: 6500, days: [9, 11, 18],  fixed_eur: 358, eur_per_kg: 0.05, via: [[33, 30], [36, 15], [37.5, 10], [36.3, -5.6], [40, -10], [44, -9], [48.5, -5.5], [50.2, -1], [51.1, 1.6]]}
+  - {id: e_kap_ham,    from: n_kap,        to: p_hamburg,   mode: see, km: 10300,days: [14, 16, 23], fixed_eur: 358, eur_per_kg: 0.05, via: [[-30, 14], [-15, 8], [0, -5], [15, -18], [28, -16], [36.3, -8], [40, -10], [44, -9], [48.5, -5.5], [50.2, -1], [51.1, 1.6], [53, 4], [54, 7]]}
+  - {id: e_kap_rot,    from: n_kap,        to: p_rotterdam, mode: see, km: 10000,days: [14, 16, 23], fixed_eur: 358, eur_per_kg: 0.05, via: [[-30, 14], [-15, 8], [0, -5], [15, -18], [28, -16], [36.3, -8], [40, -10], [44, -9], [48.5, -5.5], [50.2, -1], [51.1, 1.6]]}
+  # Saphirglas USA
+  - {id: e_saph_ny,    from: sup_saphir,   to: p_newyork,   mode: lkw, km: 350,  days: [1,2,3],   fixed_eur: 100, eur_per_kg: 0.05}
+  - {id: e_ny_rot,     from: p_newyork,    to: p_rotterdam, mode: see, km: 5900, days: [9, 11, 18],  fixed_eur: 358, eur_per_kg: 0.05, via: [[40, -60], [46, -40], [49, -20], [50.5, -5], [50.2, -1], [51.1, 1.6]]}
+  # Perlmutt Australien
+  - {id: e_perl_bot,   from: sup_perlmutt, to: p_botany,    mode: lkw, km: 25,   days: [1,1,1],   fixed_eur: 100, eur_per_kg: 0.05}
+  - {id: e_bot_suez,   from: p_botany,     to: n_suez,      mode: see, km: 13500,days: [19, 21, 28], fixed_eur: 110, eur_per_kg: 0.05, via: [[-25, 153.5], [-10.5, 142.2], [-8.8, 126], [-8.8, 115.7], [-10, 100], [-5, 80], [5, 65], [12.6, 45.0], [20, 38.5], [27.8, 34.2]]}
+  - {id: e_bot_kap,    from: p_botany,     to: n_kap,       mode: see, km: 11000,days: [17, 19, 26], fixed_eur: 110, eur_per_kg: 0.05, via: [[-39, 148], [-39, 130], [-36, 110], [-35, 80], [-38, 50], [-36, 30]]}
+  # Armband Südafrika
+  - {id: e_arm_dur,    from: sup_armband,  to: p_durban,    mode: lkw, km: 30,   days: [1,1,1],   fixed_eur: 100, eur_per_kg: 0.05}
+  - {id: e_dur_kap,    from: p_durban,     to: n_kap,       mode: see, km: 1700, days: [3, 5, 12],   fixed_eur: 110, eur_per_kg: 0.05, via: [[-32, 32], [-35, 25]]}
+  # Hinterland-Anbindung Heilbronn
+  - {id: e_ham_hn_bahn,from: p_hamburg,    to: n_heilbronn, mode: bahn,         km: 700, days: [2,3,5], fixed_eur: 150, eur_per_kg: 0.04}
+  - {id: e_ham_hn_lkw, from: p_hamburg,    to: n_heilbronn, mode: lkw,          km: 680, days: [1,2,3], fixed_eur: 180, eur_per_kg: 0.06}
+  - {id: e_rot_hn_bs,  from: p_rotterdam,  to: n_heilbronn, mode: binnenschiff, km: 630, days: [4,5,8], fixed_eur: 86, eur_per_kg: 0.02, via: [[51.4, 6.6], [50.0, 7.9], [49.5, 8.47]]}
+  - {id: e_rot_hn_bahn,from: p_rotterdam,  to: n_heilbronn, mode: bahn,         km: 650, days: [2,3,5], fixed_eur: 150, eur_per_kg: 0.04}
+  - {id: e_rot_hn_lkw, from: p_rotterdam,  to: n_heilbronn, mode: lkw,          km: 580, days: [1,2,3], fixed_eur: 165, eur_per_kg: 0.05}
+  # Luftfracht-Notfalloptionen (nur bei air_policy != off)
+  - {id: e_geh_fra,    from: sup_gehaeuse, to: a_fra, mode: luft, km: 9100,  days: [2,3,5], fixed_eur: 250, eur_per_kg: 4.29}
+  - {id: e_saph_fra,   from: sup_saphir,   to: a_fra, mode: luft, km: 6200,  days: [2,3,4], fixed_eur: 250, eur_per_kg: 4.29}
+  - {id: e_perl_fra,   from: sup_perlmutt, to: a_fra, mode: luft, km: 16500, days: [2,3,5], fixed_eur: 250, eur_per_kg: 4.29}
+  - {id: e_arm_fra,    from: sup_armband,  to: a_fra, mode: luft, km: 9000,  days: [3,4,6], fixed_eur: 250, eur_per_kg: 4.29}
+  - {id: e_fra_hn,     from: a_fra,        to: n_heilbronn, mode: lkw, km: 130, days: [1,1,1], fixed_eur: 20, eur_per_kg: 0.64}
+  # Distribution Heilbronn -> Kunden (Paketdienst; Kosten je kg)
+  - {id: d_de,   from: n_heilbronn, to: c_de,   mode: lkw, km: 600,  days: [1,2,3], fixed_eur: 0, eur_per_kg: 40, kind: outbound}
+  - {id: d_fr,   from: n_heilbronn, to: c_fr,   mode: lkw, km: 650,  days: [2,3,4], fixed_eur: 0, eur_per_kg: 56, kind: outbound}
+  - {id: d_it,   from: n_heilbronn, to: c_it,   mode: lkw, km: 450,  days: [2,3,4], fixed_eur: 0, eur_per_kg: 56, kind: outbound}
+  - {id: d_es,   from: n_heilbronn, to: c_es,   mode: lkw, km: 1700, days: [3,4,6], fixed_eur: 0, eur_per_kg: 66, kind: outbound}
+  - {id: d_nord, from: n_heilbronn, to: c_nord, mode: lkw, km: 1600, days: [3,4,6], fixed_eur: 0, eur_per_kg: 66, kind: outbound}
+
+# Tier-1-Lieferanten; Tier-2 beliefern das jeweilige Tier-1 (Preis im Tier-1-Preis enthalten, A)
+suppliers:
+  - {id: sup_uhrwerk,     country: CH, continent: Europa,       eu: false, prod_days: [25,35,50],
+     note: "6. Standort: Schweiz als Uhrwerk-Zentrum (fachliche Begründung im Poster)",
+     tier2: [{node: t2_helios, edge: e_helios_uw, prod_days: [10,14,20]},
+             {node: t2_gurofa, edge: e_gurofa_uw, prod_days: [10,14,20]}]}
+  - {id: sup_zifferblatt, country: FR, continent: Europa,       eu: true,  prod_days: [15,20,30], tier2: []}
+  - {id: sup_gehaeuse,    country: CN, continent: Asien,        eu: false, prod_days: [20,30,45], tier2: []}
+  - {id: sup_saphir,      country: US, continent: Nordamerika,  eu: false, prod_days: [15,25,35], tier2: []}
+  - {id: sup_perlmutt,    country: AU, continent: Ozeanien,     eu: false, prod_days: [20,30,45], tier2: []}
+  - {id: sup_armband,     country: ZA, continent: Afrika,       eu: false, prod_days: [15,25,40],
+     tier2: [{node: t2_leatherite, edge: e_leather_arm, prod_days: [7,10,15]},
+             {node: t2_gerberei,   edge: e_gerb_arm,    prod_days: [10,14,21]}]}
+
+components:
+  - {id: uhrwerk,     name: Uhrwerk,                 supplier: sup_uhrwerk,     price_eur: 150, weight_kg: 0.03, duty_rate: 0.0,   order_qty: 400}
+  - {id: zifferblatt, name: Zifferblatt + Zeigerset, supplier: sup_zifferblatt, price_eur: 20,  weight_kg: 0.01, duty_rate: 0.0,   order_qty: 2500}
+  - {id: gehaeuse,    name: Gehäuse,                 supplier: sup_gehaeuse,    price_eur: 25,  weight_kg: 0.055, duty_rate: 0.027, order_qty: 2500}
+  - {id: saphir,      name: Saphirglas,              supplier: sup_saphir,      price_eur: 6,  weight_kg: 0.005, duty_rate: 0.0,   order_qty: 1000}
+  - {id: perlmutt,    name: Perlmutt-Platte,         supplier: sup_perlmutt,    price_eur: 18,  weight_kg: 0.006, duty_rate: 0.027, order_qty: 1000}
+  - {id: armband,     name: Lederarmband,            supplier: sup_armband,     price_eur: 22,  weight_kg: 0.02, duty_rate: 0.0,   order_qty: 4000}
+
+# Regelroute je Komponente (Folge von Kanten-IDs). Bei Sperrung berechnet Dijkstra eine Umleitung.
+base_routes:
+  uhrwerk:     [e_uw_hn]
+  zifferblatt: [e_zb_hn]
+  gehaeuse:    [e_geh_yan, e_yan_suez, e_suez_ham, e_ham_hn_bahn]
+  saphir:      [e_saph_ny, e_ny_rot, e_rot_hn_bs]
+  perlmutt:    [e_perl_bot, e_bot_suez, e_suez_rot, e_rot_hn_lkw]
+  armband:     [e_arm_dur, e_dur_kap, e_kap_rot, e_rot_hn_lkw]

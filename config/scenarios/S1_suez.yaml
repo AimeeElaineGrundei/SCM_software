@@ -1,0 +1,5 @@
+name: S1 Suezkanal gesperrt
+description: Suezkanal ab Tag 60 für 120 Tage gesperrt; Seeverkehr weicht über das Kap aus (Dijkstra).
+params: {}
+events:
+  - {type: block_node, node: n_suez, start: 60, end: 180}

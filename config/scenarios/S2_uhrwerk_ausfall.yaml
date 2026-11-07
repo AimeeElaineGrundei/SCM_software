@@ -1,0 +1,5 @@
+name: S2 Uhrwerk-Ausfall (2 Monate)
+description: Der Uhrwerk-Hersteller (Single Source) fällt ab Tag 120 für 60 Tage aus.
+params: {}
+events:
+  - {type: supplier_outage, supplier: sup_uhrwerk, start: 120, end: 180}

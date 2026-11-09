@@ -243,3 +243,92 @@ def check_requirements(cfg: Config, n_scenarios: int = 4, n_criteria: int = 5) -
     res.append((n_criteria >= 4, f"≥ 4 Zielkriterien getrennt ausgewiesen ({n_criteria})"))
     res.append((True, "Einheitenkonsistenz: Tage / EUR / kg / km / g CO2e je tkm (per Lader erzwungen)"))
     return res
+
+
+# ----------------------------------------------------------------------------- Stammdaten manuell überschreiben
+GENERAL_KEYS = [  # (Schlüssel, Bezeichnung, Einheit)
+    ("assembly.wage_eur_h", "Montagelohn", "€/h"),
+    ("assembly.time_h_per_watch", "Montagezeit je Uhr", "h"),
+    ("assembly.workers", "Anzahl Monteure", "Personen"),
+    ("holding_cost_rate", "Lagerhaltungskostensatz", "Anteil p. a. (0,22 = 22 %)"),
+    ("service_level_target", "Servicegrad-Ziel β", "Anteil (0,97 = 97 %)"),
+    ("fg_target_days", "Zielbestand Fertigwarenlager", "Tage Nachfrage"),
+    ("watch_pack_kg", "Versandgewicht je Uhr", "kg"),
+    ("co2_g_per_tkm.see", "Emissionsfaktor Seeschiff", "g CO₂e/tkm"),
+    ("co2_g_per_tkm.bahn", "Emissionsfaktor Bahn", "g CO₂e/tkm"),
+    ("co2_g_per_tkm.lkw", "Emissionsfaktor Lkw", "g CO₂e/tkm"),
+    ("co2_g_per_tkm.binnenschiff", "Emissionsfaktor Binnenschiff", "g CO₂e/tkm"),
+    ("co2_g_per_tkm.luft", "Emissionsfaktor Luftfracht", "g CO₂e/tkm"),
+]
+
+
+def master_tables(cfg: Config) -> dict:
+    """Aktuelle Stammdaten als Tabellenzeilen (für die editierbaren Register der Oberfläche)."""
+    comps = [dict(id=c.id, name=c.name, lieferant=cfg.nodes[c.supplier].name, price_eur=c.price_eur,
+                  weight_kg=c.weight_kg, duty_pct=round(100 * c.duty_rate, 4), order_qty=c.order_qty)
+             for c in cfg.components.values()]
+    edges = [dict(id=e.id, strecke=f"{cfg.nodes[e.src].name} → {cfg.nodes[e.dst].name}", mode=e.mode, km=e.km,
+                  fixed_eur=e.fixed_eur, eur_per_kg=e.eur_per_kg, d_min=e.days[0], d_mode=e.days[1], d_max=e.days[2])
+             for e in cfg.edges.values()]
+    sups = []
+    for s in cfg.suppliers.values():
+        sups.append(dict(key=s.id, name=cfg.nodes[s.id].name, stufe="Tier 1", d_min=s.prod_days[0], d_mode=s.prod_days[1], d_max=s.prod_days[2]))
+        for t in s.tier2:
+            sups.append(dict(key=f"{s.id}/{t.node}", name=cfg.nodes[t.node].name, stufe="Tier 2",
+                             d_min=t.prod_days[0], d_mode=t.prod_days[1], d_max=t.prod_days[2]))
+    gen = []
+    for key, label, unit in GENERAL_KEYS:
+        v = cfg.params
+        for part in key.split("."):
+            v = v[part]
+        gen.append(dict(key=key, label=label, value=v, unit=unit))
+    return dict(comps=comps, edges=edges, sups=sups, gen=gen)
+
+
+def _num(v, where, lo=0.0, hi=None, strict=False):
+    try:
+        x = float(str(v).replace(",", "."))
+    except Exception:
+        raise ConfigError(f"{where}: Zahl erwartet, erhalten {v!r}")
+    if x != x or (strict and x <= lo) or x < lo or (hi is not None and x > hi):
+        raise ConfigError(f"{where}: Wert {x} außerhalb des erlaubten Bereichs")
+    return x
+
+
+def apply_master_data(base: Config, comps=None, edges=None, sups=None, gen=None) -> Config:
+    """Manuelle Änderungen (Preis, Zoll, Frachtkosten, Zeiten, Parameter) auf eine Kopie der Config anwenden."""
+    cfg = copy.deepcopy(base)
+    for r in comps or []:
+        c = cfg.components[r["id"]]
+        w = f"Komponente {c.name}"
+        c.price_eur = _num(r["price_eur"], w + " Preis", strict=True)
+        c.weight_kg = _num(r["weight_kg"], w + " Gewicht", strict=True)
+        c.duty_rate = _num(r["duty_pct"], w + " Zoll", 0, 99.9) / 100.0
+        c.order_qty = int(_num(r["order_qty"], w + " Bestellmenge", strict=True))
+    for r in edges or []:
+        e = cfg.edges[r["id"]]
+        w = f"Kante {e.id}"
+        e.km = _num(r["km"], w + " km", strict=True)
+        e.fixed_eur = _num(r["fixed_eur"], w + " Fixkosten")
+        e.eur_per_kg = _num(r["eur_per_kg"], w + " €/kg")
+        e.days = _tri([_num(r["d_min"], w + " min"), _num(r["d_mode"], w + " Modus"), _num(r["d_max"], w + " max")], w)
+    for r in sups or []:
+        tri = _tri([_num(r["d_min"], "Fertigungszeit min"), _num(r["d_mode"], "Fertigungszeit Modus"),
+                    _num(r["d_max"], "Fertigungszeit max")], f"Fertigungszeit {r['name']}")
+        if "/" in r["key"]:
+            sid, tid = r["key"].split("/")
+            for t in cfg.suppliers[sid].tier2:
+                if t.node == tid:
+                    t.prod_days = tri
+        else:
+            cfg.suppliers[r["key"]].prod_days = tri
+    for r in gen or []:
+        parts = r["key"].split(".")
+        d = cfg.params
+        for p in parts[:-1]:
+            d = d[p]
+        d[parts[-1]] = _num(r["value"], r["label"], strict=r["key"] in ("assembly.workers", "assembly.time_h_per_watch"))
+        if r["key"] == "assembly.workers":
+            d[parts[-1]] = int(d[parts[-1]])
+    validate_params(cfg)
+    return cfg

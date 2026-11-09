@@ -177,3 +177,24 @@ def test_stress_scenarios_worse_than_base_in_service():
     base = tab[tab.key == "S0_basis"].servicegrad.iloc[0]
     for k in ("S1_suez", "S2_uhrwerk_ausfall", "S3_nachfrage"):
         assert tab[tab.key == k].servicegrad.iloc[0] < base
+
+
+# ---------------------------------------------------------------- Stammdaten-Register
+def test_master_data_override_changes_costs_and_rejects_invalid():
+    from scm.config import master_tables, apply_master_data
+    m = master_tables(BASE)
+    assert reference_landed_cost(apply_master_data(BASE, m["comps"], m["edges"], m["sups"], m["gen"])) == pytest.approx(reference_landed_cost(BASE))
+    m["comps"][0]["price_eur"] = 200          # Uhrwerk +50 €
+    m["comps"][2]["duty_pct"] = 4.6           # Gehäuse-Zoll 4,6 %
+    c = apply_master_data(BASE, m["comps"])
+    assert reference_landed_cost(c) - reference_landed_cost(BASE) > 50
+    r = SimulationEngine(apply_scenario(c, SC["S0_basis"], param_overrides=dict(stochastic=False))).run()
+    assert r.kpis["landed_cost"] == pytest.approx(reference_landed_cost(c), rel=1e-6)
+    m["comps"][0]["price_eur"] = -5
+    with pytest.raises(ConfigError):
+        apply_master_data(BASE, m["comps"])
+    m = master_tables(BASE)
+    m["edges"][0]["d_min"], m["edges"][0]["d_max"] = 9, 2
+    with pytest.raises(ConfigError):
+        apply_master_data(BASE, edges=m["edges"])
+    assert BASE.components["uhrwerk"].price_eur == 150   # Original unverändert

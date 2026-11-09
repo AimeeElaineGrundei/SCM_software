@@ -5,11 +5,12 @@ Start:  python app.py   ->  http://127.0.0.1:8050
 """
 from __future__ import annotations
 import dash
-from dash import Dash, dcc, html, dash_table, Input, Output, State, ctx, no_update
+from dash import Dash, dcc, html, dash_table, Input, Output, State, ctx, no_update, Patch
 import io
 import pandas as pd
 
-from scm.config import load_base, list_scenarios, apply_scenario, check_requirements, ConfigError, MODES
+from scm.config import (load_base, list_scenarios, apply_scenario, check_requirements, ConfigError, MODES,
+                        master_tables, apply_master_data)
 from scm.runner import run_once, compare_scenarios, grid_search, CRITERIA
 from scm import viz
 
@@ -47,6 +48,77 @@ app.index_string = app.index_string.replace("</head>", f"<style>{CSS}</style></h
 def slider(id_, lo, hi, step, val, marks=None):
     return dcc.Slider(id=id_, min=lo, max=hi, step=step, value=val, marks=marks,
                       tooltip={"placement": "bottom", "always_visible": True})
+
+
+# ----------------------------------------------------------------------------- Stammdaten-Register
+EDIT_BG = [{"if": {"column_editable": True}, "backgroundColor": "#fff8e1"}]
+TBL_STYLE = dict(style_cell={"fontSize": 12, "padding": "5px", "textAlign": "left", "whiteSpace": "normal", "height": "auto"},
+                 style_header={"fontWeight": "700", "backgroundColor": "#efe9dc"}, style_data_conditional=EDIT_BG)
+M0 = master_tables(BASE)
+
+
+def _cols(spec):
+    return [dict(name=n, id=i, editable=e, type="numeric" if e else "text") for i, n, e in spec]
+
+
+def master_layout():
+    return html.Div([
+        html.Div([html.B("Stammdaten manuell ändern. "), "Gelbe Zellen sind editierbar (Preis, Zoll, Frachtkosten, Transport- und Fertigungszeiten, Parameter). "
+                  "Die Änderungen gelten sofort für alle Läufe (Einzellauf, Auswertung, Rastersuche) – die Datei config/base.yaml bleibt unverändert; "
+                  "zum dauerhaften Speichern den Wert in der YAML-Datei ändern."], className="note", style={"fontSize": "13px"}),
+        html.Div(id="master-status", style={"margin": "8px 0", "fontSize": "13px"}),
+        html.Button("Alle Stammdaten auf config/base.yaml zurücksetzen", id="master-reset", className="btn sec", style={"width": "auto", "padding": "7px 14px"}),
+        html.H3("Komponenten (Einkaufspreis, Gewicht, Zollsatz, Bestellmenge)", style={"marginTop": "16px"}),
+        dash_table.DataTable(id="m-comp", data=M0["comps"], editable=True, **TBL_STYLE, columns=_cols([
+            ("id", "ID", False), ("name", "Komponente", False), ("lieferant", "Lieferant", False), ("price_eur", "Preis [€/Stk]", True),
+            ("weight_kg", "Gewicht [kg/Stk]", True), ("duty_pct", "Zoll [% vom Warenwert + Fracht]", True), ("order_qty", "Bestellmenge Q [Stk]", True)])),
+        html.H3("Transportkanten (Kosten und Zeiten je Strecke)", style={"marginTop": "16px"}),
+        dash_table.DataTable(id="m-edge", data=M0["edges"], editable=True, page_size=12, filter_action="native", sort_action="native", **TBL_STYLE,
+                             columns=_cols([("id", "ID", False), ("strecke", "Strecke", False), ("mode", "Verkehrsträger", False), ("km", "km", True),
+                                            ("fixed_eur", "Fixkosten je Sendung [€]", True), ("eur_per_kg", "Fracht [€/kg]", True),
+                                            ("d_min", "Dauer min [d]", True), ("d_mode", "Dauer Modus [d]", True), ("d_max", "Dauer max [d]", True)])),
+        html.H3("Lieferanten (Fertigungszeit je Auftrag)", style={"marginTop": "16px"}),
+        dash_table.DataTable(id="m-sup", data=M0["sups"], editable=True, **TBL_STYLE,
+                             columns=_cols([("key", "Schlüssel", False), ("name", "Lieferant", False), ("stufe", "Stufe", False),
+                                            ("d_min", "Fertigung min [d]", True), ("d_mode", "Modus [d]", True), ("d_max", "max [d]", True)])),
+        html.H3("Allgemeine Parameter", style={"marginTop": "16px"}),
+        dash_table.DataTable(id="m-gen", data=M0["gen"], editable=True, **TBL_STYLE,
+                             columns=[dict(name="Schlüssel", id="key", editable=False), dict(name="Parameter", id="label", editable=False),
+                                      dict(name="Wert", id="value", editable=True, type="numeric"), dict(name="Einheit", id="unit", editable=False)]),
+    ], style={"padding": "12px"})
+
+
+MASTER_STATES = [State("m-comp", "data"), State("m-edge", "data"), State("m-sup", "data"), State("m-gen", "data")]
+
+
+def get_base(comps, edges, sups, gen):
+    """BASE mit den im Register geänderten Stammdaten (wirft ConfigError bei ungültigen Werten)."""
+    return apply_master_data(BASE, comps, edges, sups, gen)
+
+
+@app.callback(Output("master-status", "children"), Input("m-comp", "data"), Input("m-edge", "data"), Input("m-sup", "data"), Input("m-gen", "data"))
+def _master_status(comps, edges, sups, gen):
+    try:
+        b = get_base(comps, edges, sups, gen)
+    except (ConfigError, ValueError, KeyError, TypeError) as e:
+        return html.Span(f"✘ Ungültiger Wert: {e}", className="bad")
+    from scm.engine import reference_landed_cost
+    return html.Span(f"✔ Stammdaten gültig · Handrechnung Landed Cost (ohne Simulation): {reference_landed_cost(b):.2f} €/Uhr", className="good")
+
+
+@app.callback(Output("m-comp", "data"), Output("m-edge", "data"), Output("m-sup", "data"), Output("m-gen", "data"),
+              Input("master-reset", "n_clicks"), prevent_initial_call=True)
+def _master_reset(_):
+    m = master_tables(BASE)
+    return m["comps"], m["edges"], m["sups"], m["gen"]
+
+
+@app.callback(Output("map", "figure", allow_duplicate=True), Input("speed", "value"), prevent_initial_call=True)
+def _speed(ms):
+    p = Patch()
+    p["layout"]["updatemenus"][0]["buttons"][0]["args"][1]["frame"]["duration"] = int(ms)
+    return p
+
 
 
 sidebar = html.Div([
@@ -103,7 +175,14 @@ sidebar = html.Div([
 main = html.Div([
     html.Div(id="kpi-cards"),
     dcc.Tabs(id="tabs", value="map", children=[
-        dcc.Tab(label="Karte (animiert)", value="map", children=[dcc.Loading(dcc.Graph(id="map", config={"scrollZoom": True}))]),
+        dcc.Tab(label="Karte (animiert)", value="map", children=[
+            html.Div([html.Span("Animationsgeschwindigkeit: ", style={"fontSize": "12px", "color": "#555"}),
+                      dcc.RadioItems(id="speed", value=60, inline=True, inputStyle={"marginLeft": "12px"},
+                                     options=[{"label": " sehr langsam", "value": 250}, {"label": " langsam", "value": 120},
+                                              {"label": " normal", "value": 60}, {"label": " schnell", "value": 25},
+                                              {"label": " sehr schnell", "value": 8}],
+                                     style={"display": "inline-block", "fontSize": "12px"})], style={"padding": "8px 12px 0"}),
+            dcc.Loading(dcc.Graph(id="map", config={"scrollZoom": True}))]),
         dcc.Tab(label="Diagramme", value="charts", children=[dcc.Loading(html.Div(id="charts-box"))]),
         dcc.Tab(label="Kennzahlen", value="kpi", children=[html.Div([
             html.H3("Einzellauf"), html.Div(id="kpi-single"),
@@ -115,6 +194,7 @@ main = html.Div([
                      style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}),
             dcc.Loading(dcc.Graph(id="pareto-fig")), html.Div(id="pareto-table"),
             dcc.Store(id="grid-store")], style={"padding": "12px"})]),
+        dcc.Tab(label="Stammdaten (editierbar)", value="master", children=[master_layout()]),
         dcc.Tab(label="Prüfung & Annahmen", value="check", children=[html.Div(id="check-box", style={"padding": "12px"})]),
     ]),
 ])
@@ -180,11 +260,12 @@ def _add_event(n, click, typ, target, start, dur, fac, data):
     return data
 
 
-def make_cfg(scen_key, sb, qf, demand, air, rw, stoch, table, seed):
+def make_cfg(scen_key, sb, qf, demand, air, rw, stoch, table, seed, base=None):
+    base = base or BASE
     sc = dict(SCEN[scen_key])
     sc["events"] = list(sc.get("events", [])) + [row_to_event(r) for r in (table or [])]
-    return apply_scenario(BASE, sc, param_overrides=dict(
-        safety_stock_days=float(sb), order_q_factor=float(qf), annual_demand=float(demand or BASE.p("annual_demand")),
+    return apply_scenario(base, sc, param_overrides=dict(
+        safety_stock_days=float(sb), order_q_factor=float(qf), annual_demand=float(demand or base.p("annual_demand")),
         air_policy=air, route_weight=rw, stochastic=bool(stoch), seed=int(seed or 0)))
 
 
@@ -207,18 +288,19 @@ def df_table(df, id_=None):
 @app.callback(Output("map", "figure"), Output("charts-box", "children"), Output("kpi-single", "children"), Output("kpi-cards", "children"),
               Input("run1", "n_clicks"),
               State("scen", "value"), State("sb", "value"), State("qf", "value"), State("demand", "value"), State("air", "value"),
-              State("rw", "value"), State("stoch", "value"), State("ev-table", "data"), State("seed", "value"))
-def _run_single(_, scen, sb, qf, demand, air, rw, stoch, table, seed):
+              State("rw", "value"), State("stoch", "value"), State("ev-table", "data"), State("seed", "value"), State("speed", "value"),
+              *MASTER_STATES)
+def _run_single(_, scen, sb, qf, demand, air, rw, stoch, table, seed, speed, mc, me, ms, mg):
     try:
-        cfg = make_cfg(scen, sb, qf, demand, air, rw, stoch, table, seed)
-    except (ConfigError, ValueError, KeyError) as e:
+        cfg = make_cfg(scen, sb, qf, demand, air, rw, stoch, table, seed, get_base(mc, me, ms, mg))
+    except (ConfigError, ValueError, KeyError, TypeError) as e:
         return no_update, html.Div(f"Konfigurationsfehler: {e}", className="bad"), no_update, no_update
     res = run_once(cfg, cfg.p("seed"), 0)
     figs = viz.charts(res)
     box = html.Div([html.Div(dcc.Graph(figure=figs[0]), style={"gridColumn": "1 / span 2"}),
                     dcc.Graph(figure=figs[1]), dcc.Graph(figure=figs[2]), dcc.Graph(figure=figs[3]), dcc.Graph(figure=figs[4])],
                    style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px"})
-    return viz.network_map(res), box, df_table(viz.kpi_table(res)), cards(res.kpis)
+    return viz.network_map(res, speed_ms=int(speed or 60)), box, df_table(viz.kpi_table(res)), cards(res.kpis)
 
 
 # ----------------------------------------------------------------------------- Auswertung
@@ -226,8 +308,8 @@ def _run_single(_, scen, sb, qf, demand, air, rw, stoch, table, seed):
               Input("run2", "n_clicks"),
               State("scen", "value"), State("sb", "value"), State("qf", "value"), State("demand", "value"), State("air", "value"),
               State("rw", "value"), State("stoch", "value"), State("ev-table", "data"), State("seed", "value"), State("reps", "value"),
-              prevent_initial_call=True)
-def _run_eval(_, scen, sb, qf, demand, air, rw, stoch, table, seed, reps):
+              *MASTER_STATES, prevent_initial_call=True)
+def _run_eval(_, scen, sb, qf, demand, air, rw, stoch, table, seed, reps, mc, me, ms, mg):
     scenarios = dict(SCEN)
     if table:
         sc = dict(SCEN[scen])
@@ -235,11 +317,11 @@ def _run_eval(_, scen, sb, qf, demand, air, rw, stoch, table, seed, reps):
         sc["events"] = list(sc.get("events", [])) + [row_to_event(r) for r in table]
         scenarios["_custom"] = sc
     try:
-        base = apply_scenario(BASE, None, param_overrides=dict(stochastic=bool(stoch), seed=int(seed or 0)))
+        base = apply_scenario(get_base(mc, me, ms, mg), None, param_overrides=dict(stochastic=bool(stoch), seed=int(seed or 0)))
         tab, _ = compare_scenarios(base, int(reps or 10), int(seed or 0), scenarios,
                                    param_overrides=dict(safety_stock_days=float(sb), order_q_factor=float(qf),
                                                         annual_demand=float(demand), air_policy=air, route_weight=rw))
-    except (ConfigError, ValueError, KeyError) as e:
+    except (ConfigError, ValueError, KeyError, TypeError) as e:
         return html.Div(f"Fehler: {e}", className="bad"), no_update, no_update
     return df_table(viz.scenario_table(tab, TARGET)), viz.scenario_bars(tab, TARGET), {"display": "block"}
 
@@ -247,9 +329,9 @@ def _run_eval(_, scen, sb, qf, demand, air, rw, stoch, table, seed, reps):
 # ----------------------------------------------------------------------------- Pareto
 @app.callback(Output("grid-store", "data"), Output("pareto-table", "children"),
               Input("run3", "n_clicks"), State("scen", "value"), State("reps", "value"), State("seed", "value"),
-              State("demand", "value"), State("rw", "value"), prevent_initial_call=True)
-def _run_grid(_, scen, reps, seed, demand, rw):
-    base = apply_scenario(BASE, None, param_overrides=dict(annual_demand=float(demand), route_weight=rw, seed=int(seed or 0)))
+              State("demand", "value"), State("rw", "value"), *MASTER_STATES, prevent_initial_call=True)
+def _run_grid(_, scen, reps, seed, demand, rw, mc, me, ms, mg):
+    base = apply_scenario(get_base(mc, me, ms, mg), None, param_overrides=dict(annual_demand=float(demand), route_weight=rw, seed=int(seed or 0)))
     g = grid_search(base, SCEN[scen], reps=min(int(reps or 5), 8), seed=int(seed or 0))
     show = g[g.pareto].copy()
     show["servicegrad"] = (100 * show.servicegrad).round(1)

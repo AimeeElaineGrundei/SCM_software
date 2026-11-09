@@ -52,7 +52,7 @@ def _blocked_nodes(intervals, day):
     return {o for k, o, a, b in intervals if k == "node" and a <= day < b}
 
 
-def network_map(res, step: int = 3, europe_first: bool = False) -> go.Figure:
+def network_map(res, step: int = 3, speed_ms: int = 60) -> go.Figure:
     cfg: Config = res.cfg
     legs = res.legs.copy()
     fig = go.Figure()
@@ -131,7 +131,7 @@ def network_map(res, step: int = 3, europe_first: bool = False) -> go.Figure:
         updatemenus=[
             dict(type="buttons", direction="left", x=0.0, y=0.0, yanchor="top", xanchor="left", pad=dict(r=6, t=4),
                  buttons=[dict(label="▶ Abspielen", method="animate",
-                               args=[None, dict(frame=dict(duration=90, redraw=True), fromcurrent=True, transition=dict(duration=0))]),
+                               args=[None, dict(frame=dict(duration=speed_ms, redraw=True), fromcurrent=True, transition=dict(duration=0))]),
                           dict(label="❚❚ Pause", method="animate",
                                args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate", transition=dict(duration=0))])]),
             dict(type="buttons", direction="left", x=1.0, y=0.0, yanchor="top", xanchor="right", pad=dict(r=6, t=4),
@@ -158,11 +158,20 @@ def charts(res):
         f1.add_vrect(x0=a, x1=min(b, cfg.p("horizon_days")), fillcolor="#d62828", opacity=0.08, line_width=0)
     f1.update_layout(title="Bestandsreichweite je Komponente (Tage der Ø-Nachfrage; rot = Störung)", yaxis_title="Reichweite [Tage]",
                      xaxis_title="Tag", font=FONT, height=360, margin=dict(t=50, b=40), legend=dict(orientation="h", y=-0.25))
-    f2 = go.Figure()
-    f2.add_trace(go.Bar(x=d.day, y=d.sold, name="geliefert", marker_color="#2a9d8f"))
-    f2.add_trace(go.Bar(x=d.day, y=d.lost, name="Fehlmenge", marker_color="#d62828"))
-    f2.update_layout(barmode="stack", title="Nachfrage je Tag: geliefert vs. Fehlmenge", yaxis_title="Uhren/Tag",
-                     xaxis_title="Tag", font=FONT, height=300, margin=dict(t=50, b=40), legend=dict(orientation="h", y=-0.3))
+    # Nachfrage je Woche (Tageswerte sind zu klein/verrauscht): geliefert + Fehlmenge gestapelt, Servicegrad als Linie
+    w = d.assign(woche=d.day // 7).groupby("woche").agg(demand=("demand", "sum"), sold=("sold", "sum"), lost=("lost", "sum")).reset_index()
+    w["beta"] = (100 * w.sold / w.demand.where(w.demand > 0)).fillna(100)
+    f2 = make_subplots(specs=[[{"secondary_y": True}]])
+    f2.add_trace(go.Bar(x=w.woche, y=w.sold, name="geliefert", marker_color="#2a9d8f"), secondary_y=False)
+    f2.add_trace(go.Bar(x=w.woche, y=w.lost, name="Fehlmenge", marker_color="#d62828"), secondary_y=False)
+    f2.add_trace(go.Scatter(x=w.woche, y=w.beta, name="Servicegrad (rot gestrichelt = Ziel)", mode="lines+markers",
+                            line=dict(color="#1b2a34", width=1.5), marker=dict(size=4)), secondary_y=True)
+    f2.add_hline(y=cfg.p("service_level_target") * 100, line_dash="dash", line_color="#d62828", secondary_y=True, opacity=0.6)
+    f2.update_yaxes(title_text="Uhren pro Woche", secondary_y=False, rangemode="tozero")
+    f2.update_yaxes(title_text="Servicegrad [%]", secondary_y=True, range=[max(0, float(w.beta.min()) - 5), 101], showgrid=False, tickformat=".0f", nticks=5)
+    f2.update_layout(barmode="stack", title="Nachfrage je Woche: geliefert vs. Fehlmenge",
+                     xaxis_title="Woche (ab Auswertungsstart)", font=FONT, height=330, margin=dict(t=50, b=40),
+                     legend=dict(orientation="h", y=-0.3))
     f3 = go.Figure(go.Scatter(x=d.day, y=d.inventory_value, mode="lines", fill="tozeroy", line=dict(color="#1f6f8b")))
     f3.update_layout(title="Lagerwert (Komponenten + Fertigwaren)", yaxis_title="€", xaxis_title="Tag",
                      font=FONT, height=300, margin=dict(t=50, b=40))
